@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice-Controlled Smart Home Agent</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; background: #f4f7f6; padding: 40px; }
+        .card { background: white; max-width: 450px; margin: 0 auto; padding: 30px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        button { background: #007bff; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 6px; cursor: pointer; margin-top: 15px; }
+        button:hover { background: #0056b3; }
+        .status-box { margin-top: 25px; text-align: left; background: #eee; padding: 15px; border-radius: 8px; }
+        .device { display: flex; justify-content: space-between; margin: 8px 0; font-weight: bold; }
+        .ON { color: green; }
+        .OFF { color: red; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>Smart Home Agent</h2>
+    <p>Click the button and say a command (e.g., "Turn on the light")</p>
+    
+    <button onclick="startListening()">🎤 Start Speaking</button>
+    
+    <p id="transcript" style="margin-top:15px; font-style: italic; color: #555;"></p>
+    <p id="response" style="font-weight: bold; color: #007bff;"></p>
+
+    <div class="status-box">
+        <h3>Device Status</h3>
+        <div class="device">Light: <span id="light-status" class="{{ states.light }}">{{ states.light }}</span></div>
+        <div class="device">Fan: <span id="fan-status" class="{{ states.fan }}">{{ states.fan }}</span></div>
+        <div class="device">AC: <span id="ac-status" class="{{ states.ac }}">{{ states.ac }}</span></div>
+    </div>
+</div>
+
+<script>
+    function startListening() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            alert("Web Speech API is not supported in this browser. Please use Chrome.");
+            return;
+        }
+
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'en-US';
+        
+        document.getElementById('transcript').innerText = "Listening...";
+
+        recognition.onresult = function(event) {
+            const command = event.results[0][0].transcript;
+            document.getElementById('transcript').innerText = `You said: "${command}"`;
+
+            fetch('/command', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ command: command })
+            })
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('response').innerText = data.message;
+                for (let device in data.states) {
+                    let el = document.getElementById(device + '-status');
+                    el.innerText = data.states[device];
+                    el.className = data.states[device];
+                }
+            });
+        };
+
+        recognition.start();
+    }
+</script>
+
+</body>
+</html>
