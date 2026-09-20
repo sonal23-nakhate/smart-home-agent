@@ -8,7 +8,7 @@ load_dotenv()
 
 app = Flask(__name__)
 
-# Initialize Groq client with environment variable check
+# Initialize Groq client securely
 api_key = os.getenv("GROQ_API_KEY")
 client = Groq(api_key=api_key) if api_key else None
 
@@ -44,56 +44,27 @@ def process_command():
     if not command:
         return jsonify({"message": "I didn't catch that.", "states": device_states})
 
-    # Validate client initialization
     if not client:
-        print("Error: GROQ_API_KEY is not configured on Render.")
+        print("Error: GROQ_API_KEY environment variable is not configured.")
         return jsonify({
-            "message": "API Key missing in Render settings. Please configure GROQ_API_KEY.",
+            "message": "GROQ_API_KEY environment variable is missing on Render settings.",
             "states": device_states
         }), 500
 
-  
     try:
-        # Array of active models to try in order
-        models_to_try = [
-            "llama-3.1-8b-instant",
-            "llama-3.3-70b-versatile",
-            "llama3-8b-8192",
-            "mixtral-8x7b-32768"
-        ]
-
-        chat_completion = None
-        last_error = None
-
-        for model_name in models_to_try:
-            try:
-                chat_completion = client.chat.completions.create(
-                    messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": f"Current device states: {json.dumps(device_states)}. Command: '{command}'"}
-                    ],
-                    model=model_name,
-                    response_format={"type": "json_object"}
-                )
-                print(f"Successfully used model: {model_name}")
-                break
-            except Exception as model_err:
-                last_error = model_err
-                continue
-
-        if not chat_completion:
-            raise Exception(f"All models failed. Last error: {str(last_error)}")
+        # Call Groq API using the active llama-3.1-8b-instant model
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": f"Current device states: {json.dumps(device_states)}. Command: '{command}'"}
+            ],
+            model="llama-3.1-8b-instant",
+            response_format={"type": "json_object"}
+        )
 
         llm_response = json.loads(chat_completion.choices[0].message.content)
         
-        # Apply device state changes
-        for device in ["light", "fan", "ac"]:
-            if llm_response.get(device) in ["ON", "OFF"]:
-                device_states[device] = llm_response[device]
-
-        response_msg = llm_response.get("response_message", "Updated device states.")
-        return jsonify({"message": response_msg, "states": device_states})
-        # Apply device state changes
+        # Apply updates based on LLM decision
         for device in ["light", "fan", "ac"]:
             if llm_response.get(device) in ["ON", "OFF"]:
                 device_states[device] = llm_response[device]
@@ -102,7 +73,7 @@ def process_command():
         return jsonify({"message": response_msg, "states": device_states})
 
     except Exception as e:
-        print("LLM Execution Error:", str(e))
+        print("LLM Error:", str(e))
         return jsonify({
             "message": f"Error processing command via AI engine: {str(e)}",
             "states": device_states
