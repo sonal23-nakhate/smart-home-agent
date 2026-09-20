@@ -52,16 +52,19 @@ def process_command():
             "states": device_states
         }), 500
 
+  
     try:
-       # Call Groq LLM API
+        # Call Groq LLM API using standard 8b model
         chat_completion = client.chat.completions.create(
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": f"Current device states: {json.dumps(device_states)}. Command: '{command}'"}
             ],
-            model="llama-3.3-70b-versatile",
+            model="llama-3.1-8b-instant",
             response_format={"type": "json_object"}
         )
+
+        llm_response = json.loads(chat_completion.choices[0].message.content)
         
         # Apply device state changes
         for device in ["light", "fan", "ac"]:
