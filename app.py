@@ -32,9 +32,47 @@ Return ONLY a valid JSON object matching this exact structure:
 }
 """
 
+def rule_based_fallback(command):
+    """Fallback rule-based parser if API key fails or models are unavailable."""
+    cmd = command.lower()
+    actions = []
+
+    if "light" in cmd:
+        if "on" in cmd:
+            device_states["light"] = "ON"
+            actions.append("turned on the light")
+        elif "off" in cmd:
+            device_states["light"] = "OFF"
+            actions.append("turned off the light")
+
+    if "fan" in cmd:
+        if "on" in cmd:
+            device_states["fan"] = "ON"
+            actions.append("turned on the fan")
+        elif "off" in cmd:
+            device_states["fan"] = "OFF"
+            actions.append("turned off the fan")
+
+    if "ac" in cmd or "air conditioner" in cmd:
+        if "on" in cmd:
+            device_states["ac"] = "ON"
+            actions.append("turned on the AC")
+        elif "off" in cmd:
+            device_states["ac"] = "OFF"
+            actions.append("turned off the AC")
+
+    if actions:
+        msg = f"Done! I've {', and '.join(actions)}."
+    else:
+        msg = "Command received, but no state changes were required."
+
+    return jsonify({"message": msg, "states": device_states})
+
+
 @app.route("/")
 def home():
     return render_template("index.html", states=device_states)
+
 
 @app.route("/command", methods=["POST"])
 def process_command():
@@ -45,39 +83,53 @@ def process_command():
         return jsonify({"message": "I didn't catch that.", "states": device_states})
 
     if not client:
-        print("Error: GROQ_API_KEY environment variable is not configured.")
-        return jsonify({
-            "message": "GROQ_API_KEY environment variable is missing on Render settings.",
-            "states": device_states
-        }), 500
+        print("GROQ_API_KEY missing or invalid. Using local rule-based intent parser.")
+        return rule_based_fallback(command)
 
-    try:
-        # Call Groq API using the active llama-3.1-8b-instant model
-        chat_completion = client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": f"Current device states: {json.dumps(device_states)}. Command: '{command}'"}
-            ],
-            model="llama-3.1-8b-instant",
-            response_format={"type": "json_object"}
-        )
+    # Active model targets
+    models_to_try = [
+        "llama-3.1-8b-instant",
+        "llama-3.3-70b-versatile",
+        "openai/gpt-oss-20b"
+    ]
 
-        llm_response = json.loads(chat_completion.choices[0].message.content)
-        
-        # Apply updates based on LLM decision
-        for device in ["light", "fan", "ac"]:
-            if llm_response.get(device) in ["ON", "OFF"]:
-                device_states[device] = llm_response[device]
+    llm_response = None
+    last_error = None
 
-        response_msg = llm_response.get("response_message", "Updated device states.")
-        return jsonify({"message": response_msg, "states": device_states})
+    for model_name in models_to_try:
+        try:
+            chat_completion = client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": f"Current device states: {json.dumps(device_states)}. Command: '{command}'"
+                    }
+                ],
+                model=model_name,
+                response_format={"type": "json_object"}
+            )
+            llm_response = json.loads(chat_completion.choices[0].message.content)
+            print(f"Successfully processed command with model: {model_name}")
+            break
+        except Exception as err:
+            last_error = err
+            print(f"Model {model_name} failed: {err}")
+            continue
 
-    except Exception as e:
-        print("LLM Error:", str(e))
-        return jsonify({
-            "message": f"Error processing command via AI engine: {str(e)}",
-            "states": device_states
-        }), 500
+    # If all Groq model attempts fail, execute rule-based fallback
+    if not llm_response:
+        print(f"All Groq models failed ({last_error}). Falling back to local parser.")
+        return rule_based_fallback(command)
+
+    # Update state matching LLM response
+    for device in ["light", "fan", "ac"]:
+        if llm_response.get(device) in ["ON", "OFF"]:
+            device_states[device] = llm_response[device]
+
+    response_msg = llm_response.get("response_message", "Updated device states.")
+    return jsonify({"message": response_msg, "states": device_states})
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
