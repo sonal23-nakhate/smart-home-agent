@@ -3,53 +3,248 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Voice-Controlled Smart Home Agent</title>
+    <title>AI Voice-Controlled Smart Home Agent</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body { font-family: Arial, sans-serif; text-align: center; background: #f4f7f6; padding: 40px; }
-        .card { background: white; max-width: 450px; margin: 0 auto; padding: 30px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        button { background: #007bff; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 6px; cursor: pointer; margin-top: 15px; }
-        button:hover { background: #0056b3; }
-        .status-box { margin-top: 25px; text-align: left; background: #eee; padding: 15px; border-radius: 8px; }
-        .device { display: flex; justify-content: space-between; margin: 8px 0; font-weight: bold; }
-        .ON { color: green; }
-        .OFF { color: red; }
+        :root {
+            --bg: #0f172a;
+            --card-bg: #1e293b;
+            --accent: #38bdf8;
+            --text: #f8fafc;
+            --muted: #94a3b8;
+            --on-color: #22c55e;
+            --off-color: #ef4444;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .card {
+            background: var(--card-bg);
+            width: 100%;
+            max-width: 440px;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+            text-align: center;
+        }
+
+        h2 { margin-top: 0; font-weight: 700; color: var(--accent); }
+        p.subtitle { color: var(--muted); font-size: 0.95rem; margin-bottom: 25px; }
+
+        /* Mic Button Animation */
+        .mic-btn-wrapper {
+            position: relative;
+            display: inline-block;
+            margin: 15px 0;
+        }
+
+        .mic-btn {
+            background: linear-gradient(135deg, #0284c7, #2563eb);
+            border: none;
+            color: white;
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            font-size: 30px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(2, 132, 199, 0.4);
+        }
+
+        .mic-btn:hover { transform: scale(1.05); }
+
+        .mic-btn.listening {
+            background: linear-gradient(135deg, #e11d48, #be123c);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(225, 29, 72, 0.7); }
+            70% { box-shadow: 0 0 0 20px rgba(225, 29, 72, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(225, 29, 72, 0); }
+        }
+
+        #transcript { min-height: 24px; font-style: italic; color: var(--muted); margin: 15px 0 5px; }
+        #response { min-height: 24px; font-weight: 600; color: var(--accent); margin-bottom: 25px; }
+
+        /* Device Toggles Grid */
+        .devices-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            text-align: left;
+        }
+
+        .device-card {
+            background: #334155;
+            padding: 16px 20px;
+            border-radius: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.3s ease;
+        }
+
+        .device-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .device-icon {
+            font-size: 1.4rem;
+            color: var(--muted);
+            transition: color 0.3s ease, transform 0.3s ease;
+        }
+
+        .device-card.active .device-icon.light { color: #fde047; filter: drop-shadow(0 0 8px #fde047); }
+        .device-card.active .device-icon.fan { color: #38bdf8; animation: spin 2s linear infinite; }
+        .device-card.active .device-icon.ac { color: #818cf8; }
+
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        /* Toggle Switches */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 26px;
+        }
+
+        .switch input { opacity: 0; width: 0; height: 0; }
+
+        .slider {
+            position: absolute; cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #64748b;
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute; content: "";
+            height: 18px; width: 18px;
+            left: 4px; bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider { background-color: var(--on-color); }
+        input:checked + .slider:before { transform: translateX(24px); }
     </style>
 </head>
 <body>
 
 <div class="card">
     <h2>Smart Home Agent</h2>
-    <p>Click the button and say a command (e.g., "Turn on the light")</p>
+    <p class="subtitle">LLM-Powered Voice Control System</p>
     
-    <button onclick="startListening()">🎤 Start Speaking</button>
+    <div class="mic-btn-wrapper">
+        <button id="micBtn" class="mic-btn" onclick="startListening()">
+            <i class="fa-solid fa-microphone"></i>
+        </button>
+    </div>
     
-    <p id="transcript" style="margin-top:15px; font-style: italic; color: #555;"></p>
-    <p id="response" style="font-weight: bold; color: #007bff;"></p>
+    <div id="transcript">Click mic and speak...</div>
+    <div id="response"></div>
 
-    <div class="status-box">
-        <h3>Device Status</h3>
-        <div class="device">Light: <span id="light-status" class="{{ states.light }}">{{ states.light }}</span></div>
-        <div class="device">Fan: <span id="fan-status" class="{{ states.fan }}">{{ states.fan }}</span></div>
-        <div class="device">AC: <span id="ac-status" class="{{ states.ac }}">{{ states.ac }}</span></div>
+    <div class="devices-grid">
+        <div id="card-light" class="device-card">
+            <div class="device-info">
+                <i class="fa-solid fa-lightbulb device-icon light"></i>
+                <span>Smart Light</span>
+            </div>
+            <label class="switch">
+                <input type="checkbox" id="toggle-light" disabled>
+                <span class="slider"></span>
+            </label>
+        </div>
+
+        <div id="card-fan" class="device-card">
+            <div class="device-info">
+                <i class="fa-solid fa-fan device-icon fan"></i>
+                <span>Smart Fan</span>
+            </div>
+            <label class="switch">
+                <input type="checkbox" id="toggle-fan" disabled>
+                <span class="slider"></span>
+            </label>
+        </div>
+
+        <div id="card-ac" class="device-card">
+            <div class="device-info">
+                <i class="fa-solid fa-snowflake device-icon ac"></i>
+                <span>Air Conditioner</span>
+            </div>
+            <label class="switch">
+                <input type="checkbox" id="toggle-ac" disabled>
+                <span class="slider"></span>
+            </label>
+        </div>
     </div>
 </div>
 
 <script>
+    const initialStates = {
+        light: "{{ states.light }}",
+        fan: "{{ states.fan }}",
+        ac: "{{ states.ac }}"
+    };
+
+    function updateUI(states) {
+        for (let device in states) {
+            const isON = states[device] === 'ON';
+            const card = document.getElementById(`card-${device}`);
+            const toggle = document.getElementById(`toggle-${device}`);
+            
+            toggle.checked = isON;
+            if (isON) {
+                card.classList.add('active');
+            } else {
+                card.classList.remove('active');
+            }
+        }
+    }
+
+    function speakText(text) {
+        if ('speechSynthesis' in window) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.rate = 1.0;
+            window.speechSynthesis.speak(utterance);
+        }
+    }
+
     function startListening() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {
-            alert("Web Speech API is not supported in this browser. Please use Chrome.");
+            alert("Web Speech API not supported. Use Google Chrome.");
             return;
         }
 
         const recognition = new SpeechRecognition();
         recognition.lang = 'en-US';
+        const micBtn = document.getElementById('micBtn');
         
+        micBtn.classList.add('listening');
         document.getElementById('transcript').innerText = "Listening...";
 
         recognition.onresult = function(event) {
+            micBtn.classList.remove('listening');
             const command = event.results[0][0].transcript;
-            document.getElementById('transcript').innerText = `You said: "${command}"`;
+            document.getElementById('transcript').innerText = `"${command}"`;
+            document.getElementById('response').innerText = "Processing with AI...";
 
             fetch('/command', {
                 method: 'POST',
@@ -59,16 +254,22 @@
             .then(res => res.json())
             .then(data => {
                 document.getElementById('response').innerText = data.message;
-                for (let device in data.states) {
-                    let el = document.getElementById(device + '-status');
-                    el.innerText = data.states[device];
-                    el.className = data.states[device];
-                }
+                updateUI(data.states);
+                speakText(data.message);
+            })
+            .catch(() => {
+                document.getElementById('response').innerText = "Error contacting server.";
             });
+        };
+
+        recognition.onerror = recognition.onend = function() {
+            micBtn.classList.remove('listening');
         };
 
         recognition.start();
     }
+
+    updateUI(initialStates);
 </script>
 
 </body>
