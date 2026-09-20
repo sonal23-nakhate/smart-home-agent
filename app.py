@@ -54,18 +54,45 @@ def process_command():
 
   
     try:
-        # Call Groq LLM API using standard 8b model
-        chat_completion = client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": f"Current device states: {json.dumps(device_states)}. Command: '{command}'"}
-            ],
-            model="llama-3.1-8b-instant",
-            response_format={"type": "json_object"}
-        )
+        # Array of active models to try in order
+        models_to_try = [
+            "llama-3.1-8b-instant",
+            "llama-3.3-70b-versatile",
+            "llama3-8b-8192",
+            "mixtral-8x7b-32768"
+        ]
+
+        chat_completion = None
+        last_error = None
+
+        for model_name in models_to_try:
+            try:
+                chat_completion = client.chat.completions.create(
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": f"Current device states: {json.dumps(device_states)}. Command: '{command}'"}
+                    ],
+                    model=model_name,
+                    response_format={"type": "json_object"}
+                )
+                print(f"Successfully used model: {model_name}")
+                break
+            except Exception as model_err:
+                last_error = model_err
+                continue
+
+        if not chat_completion:
+            raise Exception(f"All models failed. Last error: {str(last_error)}")
 
         llm_response = json.loads(chat_completion.choices[0].message.content)
         
+        # Apply device state changes
+        for device in ["light", "fan", "ac"]:
+            if llm_response.get(device) in ["ON", "OFF"]:
+                device_states[device] = llm_response[device]
+
+        response_msg = llm_response.get("response_message", "Updated device states.")
+        return jsonify({"message": response_msg, "states": device_states})
         # Apply device state changes
         for device in ["light", "fan", "ac"]:
             if llm_response.get(device) in ["ON", "OFF"]:
