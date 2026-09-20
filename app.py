@@ -8,8 +8,9 @@ load_dotenv()
 
 app = Flask(__name__)
 
-# Initialize Groq client
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+# Initialize Groq client with environment variable check
+api_key = os.getenv("GROQ_API_KEY")
+client = Groq(api_key=api_key) if api_key else None
 
 device_states = {
     "light": "OFF",
@@ -43,20 +44,26 @@ def process_command():
     if not command:
         return jsonify({"message": "I didn't catch that.", "states": device_states})
 
+    # Validate client initialization
+    if not client:
+        print("Error: GROQ_API_KEY is not configured on Render.")
+        return jsonify({
+            "message": "API Key missing in Render settings. Please configure GROQ_API_KEY.",
+            "states": device_states
+        }), 500
+
     try:
-        # LLM Intent Extraction
+       # Call Groq LLM API
         chat_completion = client.chat.completions.create(
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": f"Current device states: {json.dumps(device_states)}. Command: '{command}'"}
             ],
-            model="llama-3.1-8b-instant",
+            model="llama-3.3-70b-versatile",
             response_format={"type": "json_object"}
         )
-
-        llm_response = json.loads(chat_completion.choices[0].message.content)
         
-        # Apply updates based on LLM decision
+        # Apply device state changes
         for device in ["light", "fan", "ac"]:
             if llm_response.get(device) in ["ON", "OFF"]:
                 device_states[device] = llm_response[device]
@@ -65,8 +72,11 @@ def process_command():
         return jsonify({"message": response_msg, "states": device_states})
 
     except Exception as e:
-        print("LLM Error:", e)
-        return jsonify({"message": "Error processing command via AI engine.", "states": device_states}), 500
+        print("LLM Execution Error:", str(e))
+        return jsonify({
+            "message": f"Error processing command via AI engine: {str(e)}",
+            "states": device_states
+        }), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
